@@ -184,7 +184,7 @@ summary(m)
 
 If you use this toolbox in published work, please cite:
 
-> Ceravolo, L. (2025). *VTM Toolbox: Vocal Tract Mimicry Analysis* [Software]. Zenodo. https://doi.org/10.5281/zenodo.18936884
+> Ceravolo, L. (2022). *VTM Toolbox: Vocal Tract Mimicry Analysis* [Software]. Zenodo. https://doi.org/10.5281/zenodo.18936884
 
 A `CITATION.cff` file is included for automated citation export from GitHub.
 
