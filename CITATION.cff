@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "VTM Toolbox: Vocal Tract Mimicry Analysis"
+abstract: >
+  A MATLAB toolbox for quantifying vocal tract kinematics from endoscopic
+  video recordings during auditory emotion perception tasks. Tracks a dense
+  grid of points using Lucas-Kanade optical flow and exports frame-level
+  displacement, velocity, flow, and anatomical region metrics to a
+  tab-delimited file for downstream statistical analysis.
+authors:
+  - family-names: Ceravolo
+    given-names: Leonardo
+    affiliation: "University of Geneva"
+    orcid: "https://orcid.org/0000-0003-0638-3981"
+version: "1.0.0"
+date-released: "2025-06-01"
+license: MIT
+repository-code: "https://github.com/YOURUSERNAME/vtm-toolbox"
+doi: "10.5281/zenodo.XXXXXXX"
+keywords:
+  - vocal tract
+  - mimicry
+  - optical flow
+  - endoscopy
+  - kinematics
+  - emotion
+  - MATLAB

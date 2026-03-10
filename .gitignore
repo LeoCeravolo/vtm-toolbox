@@ -1,0 +1,34 @@
+# Participant data — never commit
+**/Run1/
+**/Run2/
+**/Run3/
+**/*_FrameLevel_Enhanced_*.txt
+**/*_AnalysisSummary.txt
+**/*DataInventory_*.txt
+**/*OutlierRemovalReport*.txt
+**/*VoiceTypeComparisonReport*.txt
+
+# MATLAB output files
+*.mat
+*.fig
+*.asv
+
+# Generated plots
+**/*.png
+**/*.svg
+
+# MATLAB temp/cache
+*.mex*
+slprj/
+*.slxc
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Video files
+*.mp4
+*.avi
+*.mov
+*.mkv
