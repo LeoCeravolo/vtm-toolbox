@@ -17,7 +17,7 @@ version: "1.0.0"
 date-released: "2025-06-01"
 license: MIT
 repository-code: "https://github.com/YOURUSERNAME/vtm-toolbox"
-doi: "10.5281/zenodo.XXXXXXX"
+doi: "10.5281/zenodo.18936884"
 keywords:
   - vocal tract
   - mimicry
