@@ -203,7 +203,7 @@ for i = iterParticipant
 
         disp(['--- Run: ', run, ' (', num2str(numel(TheNewFiles)), ' trials) ---']);
 
-        for n = 1:3%Snumel(TheNewFiles)
+        for n = 1:numel(TheNewFiles)
             ConditionName = ['trial_', num2str(n)]; % fallback if error occurs before name is parsed
             try
                 TheDetector     = vision.CascadeObjectDetector();
