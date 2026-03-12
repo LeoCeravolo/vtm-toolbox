@@ -2,7 +2,7 @@ function generateFrameLevelTXT_Auto_Enhanced(data, participant, outputDir)
     % Enhanced version that includes voice type information
     
     % Automatically extract demographics
-    [gender, age] = extractDemographics(participant);
+    [gender, age] = extractDemographics_Enhanced(participant);
     
     if ~exist(outputDir, 'dir'), mkdir(outputDir); end
     

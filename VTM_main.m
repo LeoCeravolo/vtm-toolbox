@@ -143,6 +143,7 @@ groupData.mimicryConfig = mimicryConfig;
 
 for i = iterParticipant
     participant = participants(i).name;
+    cd(cfg.baseDir);
     outputPaths = setupReorganizedOutputDirectories(participant);
     pDir = fullfile(cfg.baseDir, participant);
 
@@ -202,7 +203,7 @@ for i = iterParticipant
 
         disp(['--- Run: ', run, ' (', num2str(numel(TheNewFiles)), ' trials) ---']);
 
-        for n = 1:numel(TheNewFiles)
+        for n = 1:3%Snumel(TheNewFiles)
             ConditionName = ['trial_', num2str(n)]; % fallback if error occurs before name is parsed
             try
                 TheDetector     = vision.CascadeObjectDetector();
