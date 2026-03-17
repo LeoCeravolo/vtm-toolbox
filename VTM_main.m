@@ -79,7 +79,7 @@ if cfg.baseDir == 0
     error('No folder selected. Aborting.');
 end
 
-cfg.functionsDir   = fullfile(cfg.baseDir, 'functions');
+cfg.functionsDir = fullfile(fileparts(mfilename('fullpath')), 'functions');
 cfg.annotationFile = fullfile(cfg.baseDir, 'AnnotationTemplate.xlsx');
 
 addpath(cfg.functionsDir);
@@ -608,7 +608,17 @@ for i = iterParticipant
                     catch ME
                         disp(['  Heatmaps error: ', ME.message]);
                     end
+                    % ---- SAVE FLOW MATRICES FOR GROUP-LEVEL AVERAGING ----
+                    try
+                        flowMatFile = fullfile(outputPaths.trialAnalysis, ...
+                            [participant, '_', run, '_', ConditionName, '_FlowMaps.mat']);
+                        save(flowMatFile, 'avgMagnitudeMap', 'avgVxMap', 'avgVyMap');
+                    catch ME
+                        disp(['  Flow matrix save error: ', ME.message]);
+                    end
                 end
+
+
 
                 % Condition aggregation
                 try
