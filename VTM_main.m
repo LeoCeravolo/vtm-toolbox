@@ -512,6 +512,9 @@ for i = iterParticipant
                             data.(run).(ConditionName).ROIFlowDirection(end+1) = mean(roiDirection(:));
                             data.(run).(ConditionName).FlowVx(end+1)           = mean(roiVx(:));
                             data.(run).(ConditionName).FlowVy(end+1)           = mean(roiVy(:));
+                            % Store per-frame ROI magnitude (for future ROI analysis without video re-reading)
+                            data.(run).(ConditionName).FrameROIMagnitude(FrameCount) = mean(roiMagnitude(:));
+                            data.(run).(ConditionName).FrameROIMaxVelocity(FrameCount) = max(roiMagnitude(:));
                         catch ME
                             disp(['  Optical flow error: ', ME.message]);
                         end
@@ -612,7 +615,10 @@ for i = iterParticipant
                     try
                         flowMatFile = fullfile(outputPaths.trialAnalysis, ...
                             [participant, '_', run, '_', ConditionName, '_FlowMaps.mat']);
-                        save(flowMatFile, 'avgMagnitudeMap', 'avgVxMap', 'avgVyMap');
+                        frameMagnitude   = data.(run).(ConditionName).FrameROIMagnitude;
+                        frameMaxVelocity = data.(run).(ConditionName).FrameROIMaxVelocity;
+                        save(flowMatFile, 'avgMagnitudeMap', 'avgVxMap', 'avgVyMap', ...
+                            'frameMagnitude', 'frameMaxVelocity');
                     catch ME
                         disp(['  Flow matrix save error: ', ME.message]);
                     end
