@@ -24,6 +24,10 @@
 %   <participant>_FrameLevel_Enhanced_<timestamp>.txt
 %   One row per frame per trial. Columns: see getFrameLevelHeaders_Enhanced.m
 %
+%   <participant>_<run>_<condition>_FlowMaps.mat
+%   Per-trial average optical flow maps + per-frame magnitude vectors,
+%   saved in TrialAnalysis/ for group-level spatial analysis.
+%
 % DEPENDENCIES:
 %   MATLAB Image Processing Toolbox, Computer Vision Toolbox
 %   All functions in the /functions subfolder must be on the MATLAB path.
@@ -37,6 +41,12 @@
 %        - Runs (1 / 2 / 3) to process
 %
 % Author: Leonardo Ceravolo — initial version June 2025
+% Changelog:
+%   v1.0.5 - May 2026: removed legacy condition aggregation code,
+%            fixed demographics silent fallback, fixed stimulus 6
+%            shuffled/noize ConditionName parsing
+%   v1.0.4 - May 2026: per-frame flow saving, fixed duplicate save
+%   v1.0.3 - Mar 2026: FlowMaps.mat saving for group-level analysis
 % =========================================================================
 
 tic;
@@ -80,34 +90,32 @@ if cfg.baseDir == 0
 end
 
 cfg.functionsDir = fullfile(fileparts(mfilename('fullpath')), 'functions');
-cfg.annotationFile = fullfile(cfg.baseDir, 'AnnotationTemplate.xlsx');
-
 addpath(cfg.functionsDir);
 cd(cfg.baseDir);
 
 %% --- Discover and select participant folders ---
-allFolders   = dir(cfg.baseDir);
-allFolders   = allFolders([allFolders.isdir]);                     % keep directories only
-allFolders   = allFolders(~ismember({allFolders.name}, {'.','..'})); % drop . and ..
-folderNames  = {allFolders.name};
+allFolders = dir(cfg.baseDir);
+allFolders = allFolders([allFolders.isdir]);
+allFolders = allFolders(~ismember({allFolders.name}, {'.','..'}));
+folderNames = {allFolders.name};
 
 if isempty(folderNames)
     error('No subfolders found in: %s', cfg.baseDir);
 end
 
 [selectedIdx, ok] = listdlg( ...
-    'ListString',     folderNames, ...
-    'SelectionMode',  'multiple', ...
-    'Name',           'Select participants', ...
-    'PromptString',   'Select one or more participant folders:', ...
-    'ListSize',       [300, 300]);
+    'ListString',    folderNames, ...
+    'SelectionMode', 'multiple', ...
+    'Name',          'Select participants', ...
+    'PromptString',  'Select one or more participant folders:', ...
+    'ListSize',      [300, 300]);
 
 if ~ok || isempty(selectedIdx)
     error('No participants selected. Aborting.');
 end
 
 participants    = allFolders(selectedIdx);
-iterParticipant = 1:length(participants); % index into selected list only
+iterParticipant = 1:length(participants);
 
 %% --- Select runs ---
 [runIdx, ok] = listdlg( ...
@@ -124,22 +132,17 @@ iterRun = runIdx;
 
 %% --- Assemble mimicryConfig ---
 mimicryConfig = struct();
-mimicryConfig.frameRate                  = cfg.frameRate;
-mimicryConfig.mimicryWindowMs            = cfg.mimicryWindowMs;
-mimicryConfig.baselineWindowMs           = cfg.baselineWindowMs;
-mimicryConfig.adaptiveTrackingThreshold  = cfg.adaptiveTrackingThreshold;
-mimicryConfig.frequencyBands             = cfg.frequencyBands;
+mimicryConfig.frameRate                 = cfg.frameRate;
+mimicryConfig.mimicryWindowMs           = cfg.mimicryWindowMs;
+mimicryConfig.baselineWindowMs          = cfg.baselineWindowMs;
+mimicryConfig.adaptiveTrackingThreshold = cfg.adaptiveTrackingThreshold;
+mimicryConfig.frequencyBands            = cfg.frequencyBands;
 
 %% =====================================================================
 %  KINEMATIC ANALYSIS
 %  =====================================================================
 data = struct;
 disp('=== Starting kinematic analysis ===');
-
-groupData = struct();
-groupData.participants = {};
-groupData.conditions   = {'neutral', 'pleasure', 'happiness', 'anger'};
-groupData.mimicryConfig = mimicryConfig;
 
 for i = iterParticipant
     participant = participants(i).name;
@@ -151,39 +154,6 @@ for i = iterParticipant
     runs = dir('Run*');
 
     disp(['=== Processing participant: ', participant, ' ===']);
-
-    % Initialise per-participant condition data structure
-    participantConditionData = struct();
-    for condIdx = 1:length(groupData.conditions)
-        condName = groupData.conditions{condIdx};
-        participantConditionData.(condName) = struct();
-        participantConditionData.(condName).trials               = {};
-        participantConditionData.(condName).StableMeanDisplacement = [];
-        participantConditionData.(condName).StableMaxDisplacement  = [];
-        participantConditionData.(condName).StablePointCount       = [];
-        participantConditionData.(condName).PointCount             = [];
-        participantConditionData.(condName).ROIFlowMagnitude       = [];
-        participantConditionData.(condName).Entropy                = [];
-        participantConditionData.(condName).FlowSummary            = struct();
-        participantConditionData.(condName).AnatomicalMovement     = struct();
-        anatomicalRegions = {'epiglottis', 'vocal_folds', 'pharynx', 'larynx'};
-        for rIdx = 1:length(anatomicalRegions)
-            participantConditionData.(condName).AnatomicalMovement.(anatomicalRegions{rIdx}) = [];
-        end
-        participantConditionData.(condName).MimicryResponse      = [];
-        participantConditionData.(condName).MimicryLatency        = [];
-        participantConditionData.(condName).BaselineMovement      = [];
-        participantConditionData.(condName).StimulusMovement      = [];
-        participantConditionData.(condName).SpectralMimicryIndex  = [];
-        participantConditionData.(condName).FrequencyProfile      = [];
-        participantConditionData.(condName).EmotionMimicryIndex   = [];
-        participantConditionData.(condName).TemporalCoherence     = [];
-        participantConditionData.(condName).VelocityMetrics       = {};
-        participantConditionData.(condName).PeakVelocities        = [];
-        participantConditionData.(condName).MeanVelocities        = [];
-        participantConditionData.(condName).VelocityVariances     = [];
-        participantConditionData.(condName).MaxAccelerations      = [];
-    end
 
     for j = iterRun
         run    = runs(j).name;
@@ -204,12 +174,19 @@ for i = iterParticipant
         disp(['--- Run: ', run, ' (', num2str(numel(TheNewFiles)), ' trials) ---']);
 
         for n = 1:numel(TheNewFiles)
-            ConditionName = ['trial_', num2str(n)]; % fallback if error occurs before name is parsed
+            ConditionName = ['trial_', num2str(n)]; % fallback
             try
-                TheDetector     = vision.CascadeObjectDetector();
+                TheDetector       = vision.CascadeObjectDetector();
                 TheNewvideoReader = VideoReader(TheNewFiles(n).name);
 
-                if startsWith(TheNewFiles(n).name, '6_')
+                % Parse ConditionName from filename
+                % Handle stimulus 6 special cases (single-digit, shuffled/noize variants)
+                if startsWith(TheNewFiles(n).name, '6_') && ...
+                        (contains(TheNewFiles(n).name, 'shuffled') || contains(TheNewFiles(n).name, 'noize'))
+                    % e.g. 6__anger_shuffled_.mp4 → anger_shuffled__6
+                    ConditionName = [TheNewvideoReader.name(4:end-4), '_', TheNewvideoReader.name(1)];
+                elseif startsWith(TheNewFiles(n).name, '6_')
+                    % e.g. 6__anger.mp4 → anger__6
                     ConditionName = [TheNewvideoReader.name(3:end-4), '_', TheNewvideoReader.name(1)];
                 else
                     ConditionName = [TheNewvideoReader.name(4:end-4), '_', TheNewvideoReader.name(1:2)];
@@ -228,7 +205,7 @@ for i = iterParticipant
                 data.(run).(ConditionName).TrialNumber = n;
 
                 % Read first frame and define ROI + anatomical sub-regions
-                videoFrame   = readFrame(TheNewvideoReader);
+                videoFrame      = readFrame(TheNewvideoReader);
                 TheRectangleROI = cfg.roi;
                 anatomicalROIs  = defineAnatomicalROIs(TheRectangleROI);
 
@@ -238,28 +215,28 @@ for i = iterParticipant
                     data.(run).(ConditionName).AnatomicalMovement.(regionName{1}) = [];
                 end
 
-                data.(run).(ConditionName).StableGridPoints   = {};
-                data.(run).(ConditionName).StablePointIndices  = {};
-                data.(run).(ConditionName).StableDisplacements = {};
-                data.(run).(ConditionName).StableMeanDisplacement = [];
-                data.(run).(ConditionName).StableMaxDisplacement  = [];
-                data.(run).(ConditionName).StablePointCount       = [];
-                data.(run).(ConditionName).PointCount             = [];
-                data.(run).(ConditionName).Entropy                = [];
-                data.(run).(ConditionName).AllDisplacements       = {};
-                data.(run).(ConditionName).AllVelocities          = {};
-                data.(run).(ConditionName).FastMovementIndices    = {};
-                data.(run).(ConditionName).DisplacementThreshold  = [];
-                data.(run).(ConditionName).VelocityThreshold      = [];
-                data.(run).(ConditionName).MeanVelocity           = [];
-                data.(run).(ConditionName).MaxVelocity            = [];
-                data.(run).(ConditionName).MovementClassification = struct();
-                data.(run).(ConditionName).PointLossRate          = [];
-                data.(run).(ConditionName).TrackingQuality        = [];
-                data.(run).(ConditionName).ROIFlowMagnitude       = [];
-                data.(run).(ConditionName).ROIFlowDirection       = [];
-                data.(run).(ConditionName).FlowVx                 = [];
-                data.(run).(ConditionName).FlowVy                 = [];
+                data.(run).(ConditionName).StableGridPoints        = {};
+                data.(run).(ConditionName).StablePointIndices      = {};
+                data.(run).(ConditionName).StableDisplacements     = {};
+                data.(run).(ConditionName).StableMeanDisplacement  = [];
+                data.(run).(ConditionName).StableMaxDisplacement   = [];
+                data.(run).(ConditionName).StablePointCount        = [];
+                data.(run).(ConditionName).PointCount              = [];
+                data.(run).(ConditionName).Entropy                 = [];
+                data.(run).(ConditionName).AllDisplacements        = {};
+                data.(run).(ConditionName).AllVelocities           = {};
+                data.(run).(ConditionName).FastMovementIndices     = {};
+                data.(run).(ConditionName).DisplacementThreshold   = [];
+                data.(run).(ConditionName).VelocityThreshold       = [];
+                data.(run).(ConditionName).MeanVelocity            = [];
+                data.(run).(ConditionName).MaxVelocity             = [];
+                data.(run).(ConditionName).MovementClassification  = struct();
+                data.(run).(ConditionName).PointLossRate           = [];
+                data.(run).(ConditionName).TrackingQuality         = [];
+                data.(run).(ConditionName).ROIFlowMagnitude        = [];
+                data.(run).(ConditionName).ROIFlowDirection        = [];
+                data.(run).(ConditionName).FlowVx                  = [];
+                data.(run).(ConditionName).FlowVy                  = [];
 
                 % Stimulus window setup
                 stimulusOnsetFrame = 1;
@@ -275,7 +252,7 @@ for i = iterParticipant
                 data.(run).(ConditionName).BaselineWindow     = baselineWindow;
                 data.(run).(ConditionName).MimicryWindow      = mimicryWindow;
 
-                % Refresh counters (trial-level scalars, repeated in frame-level output)
+                % Refresh counters
                 lossTriggeredRefreshCount = 0;
                 totalRefreshCount         = 0;
 
@@ -304,8 +281,8 @@ for i = iterParticipant
                 vyAccumulator        = zeros(roiHeight, roiWidth, 'single');
                 flowFrameCount       = 0;
 
-                opticFlow    = opticalFlowLK('NoiseThreshold', 0.005);
-                FrameCount   = 0;
+                opticFlow     = opticalFlowLK('NoiseThreshold', 0.005);
+                FrameCount    = 0;
                 previousFrame = [];
 
                 TheNewvideoReader.CurrentTime = 0;
@@ -393,8 +370,8 @@ for i = iterParticipant
                             [~, prevIdx, currIdx] = intersect(prevIndices, currIndices);
 
                             if length(prevIdx) >= 15
-                                commonPrevPoints  = prevStablePoints(prevIdx, :);
-                                commonCurrPoints  = currStablePoints(currIdx, :);
+                                commonPrevPoints    = prevStablePoints(prevIdx, :);
+                                commonCurrPoints    = currStablePoints(currIdx, :);
                                 stableDisplacements = sqrt(sum((commonCurrPoints - commonPrevPoints).^2, 2));
 
                                 frameRate         = mimicryConfig.frameRate;
@@ -403,9 +380,9 @@ for i = iterParticipant
                                 displacementStd   = std(stableDisplacements);
                                 enhancedThreshold = displacementMean + 0.5 * displacementStd;
 
-                                stimulusOnset   = 1;
+                                stimulusOnset    = 1;
                                 timeFromStimulus = abs(FrameCount - stimulusOnset) / frameRate;
-                                isNearStimulus  = timeFromStimulus < 1.0;
+                                isNearStimulus   = timeFromStimulus < 1.0;
 
                                 velocityThreshold = prctile(velocities, 70);
                                 isHighVelocity    = velocities > velocityThreshold;
@@ -423,9 +400,9 @@ for i = iterParticipant
                                     disp(['  enhancedDisplacementAndVelocityProcessing error: ', ME.message]);
                                 end
 
-                                data.(run).(ConditionName).AllDisplacements{FrameCount}    = stableDisplacements;
-                                data.(run).(ConditionName).AllVelocities{FrameCount}       = velocities;
-                                data.(run).(ConditionName).FastMovementIndices{FrameCount} = fastMovementIndices;
+                                data.(run).(ConditionName).AllDisplacements{FrameCount}      = stableDisplacements;
+                                data.(run).(ConditionName).AllVelocities{FrameCount}         = velocities;
+                                data.(run).(ConditionName).FastMovementIndices{FrameCount}   = fastMovementIndices;
                                 data.(run).(ConditionName).DisplacementThreshold(FrameCount) = displacementMean;
                                 data.(run).(ConditionName).VelocityThreshold(FrameCount)     = velocityThreshold;
 
@@ -512,8 +489,9 @@ for i = iterParticipant
                             data.(run).(ConditionName).ROIFlowDirection(end+1) = mean(roiDirection(:));
                             data.(run).(ConditionName).FlowVx(end+1)           = mean(roiVx(:));
                             data.(run).(ConditionName).FlowVy(end+1)           = mean(roiVy(:));
-                            % Store per-frame ROI magnitude (for future ROI analysis without video re-reading)
-                            data.(run).(ConditionName).FrameROIMagnitude(FrameCount) = mean(roiMagnitude(:));
+
+                            % Per-frame ROI magnitude (for fast post-hoc ROI analysis)
+                            data.(run).(ConditionName).FrameROIMagnitude(FrameCount)   = mean(roiMagnitude(:));
                             data.(run).(ConditionName).FrameROIMaxVelocity(FrameCount) = max(roiMagnitude(:));
                         catch ME
                             disp(['  Optical flow error: ', ME.message]);
@@ -528,11 +506,10 @@ for i = iterParticipant
                     end
 
                     previousFrame = grayFrame;
-                end % end main frame loop
+                end % end frame loop
 
-                % --- Post-processing for this trial ---
+                % --- Post-trial processing ---
                 try
-                    % Velocity processing
                     improvedTrialLevelVelocityProcessing(data, run, ConditionName, mimicryConfig.frameRate);
                 catch ME
                     disp(['  Velocity processing error: ', ME.message]);
@@ -564,10 +541,10 @@ for i = iterParticipant
                 % Stimulus-aligned mimicry metrics
                 try
                     mimicryMetrics = performStimulusAlignedAnalysis(data, run, ConditionName, mimicryConfig);
-                    data.(run).(ConditionName).MimicryResponse   = mimicryMetrics.mimicryResponse;
-                    data.(run).(ConditionName).MimicryLatency    = mimicryMetrics.mimicryLatency;
-                    data.(run).(ConditionName).BaselineMovement  = mimicryMetrics.baselineMovement;
-                    data.(run).(ConditionName).StimulusMovement  = mimicryMetrics.stimulusMovement;
+                    data.(run).(ConditionName).MimicryResponse     = mimicryMetrics.mimicryResponse;
+                    data.(run).(ConditionName).MimicryLatency      = mimicryMetrics.mimicryLatency;
+                    data.(run).(ConditionName).BaselineMovement    = mimicryMetrics.baselineMovement;
+                    data.(run).(ConditionName).StimulusMovement    = mimicryMetrics.stimulusMovement;
                     data.(run).(ConditionName).MimicrySignificance = mimicryMetrics.significance;
                 catch ME
                     disp(['  Stimulus-aligned analysis error: ', ME.message]);
@@ -585,7 +562,7 @@ for i = iterParticipant
                     disp(['  Frequency analysis error: ', ME.message]);
                 end
 
-                % Trial-level analysis plots
+                % Trial-level plots
                 try
                     if isfield(data.(run).(ConditionName), 'StableMeanDisplacement') && ...
                             ~isempty(data.(run).(ConditionName).StableMeanDisplacement)
@@ -601,6 +578,7 @@ for i = iterParticipant
                     disp(['  Moving average analysis error: ', ME.message]);
                 end
 
+                % Save flow matrices
                 if flowFrameCount > 0
                     avgMagnitudeMap = magnitudeAccumulator / flowFrameCount;
                     avgVxMap        = vxAccumulator        / flowFrameCount;
@@ -611,9 +589,8 @@ for i = iterParticipant
                     catch ME
                         disp(['  Heatmaps error: ', ME.message]);
                     end
-                    % ---- SAVE FLOW MATRICES FOR GROUP-LEVEL AVERAGING ----
                     try
-                        flowMatFile = fullfile(outputPaths.trialAnalysis, ...
+                        flowMatFile      = fullfile(outputPaths.trialAnalysis, ...
                             [participant, '_', run, '_', ConditionName, '_FlowMaps.mat']);
                         frameMagnitude   = data.(run).(ConditionName).FrameROIMagnitude;
                         frameMaxVelocity = data.(run).(ConditionName).FrameROIMaxVelocity;
@@ -624,17 +601,7 @@ for i = iterParticipant
                     end
                 end
 
-
-
-                % Condition aggregation
-                try
-                    participantConditionData = enhancedConditionAggregation( ...
-                        participantConditionData, data, run, ConditionName, groupData.conditions);
-                catch ME
-                    disp(['  Condition aggregation error: ', ME.message]);
-                end
-
-                % Store trial-level refresh counts in data struct
+                % Store refresh counts
                 data.(run).(ConditionName).LossTriggeredRefreshes = lossTriggeredRefreshCount;
                 data.(run).(ConditionName).TotalRefreshes         = totalRefreshCount;
 
@@ -650,7 +617,7 @@ for i = iterParticipant
             disp(['  Trial ', num2str(n), ' complete.']);
         end % end trial loop
 
-        % Save run-level data
+        % Save run-level data (optional)
         if cfg.saveMatFiles
             try
                 runDataFile = fullfile(outputPaths.summaryReports, ...
@@ -665,64 +632,51 @@ for i = iterParticipant
 
     end % end run loop
 
-    % --- Export frame-level data ---
+    % --- Extract demographics from logfile ---
+    gender = 'Unknown';
+    age    = NaN;
     try
-        generateFrameLevelTXT_Auto_Enhanced(data, participant, outputPaths.dataExports);
+        logfilesDir = fullfile(pDir, 'logfiles');
+        logFiles    = dir(fullfile(logfilesDir, '*Block1.txt'));
+        if ~isempty(logFiles)
+            logData = readcell(fullfile(logfilesDir, logFiles(1).name));
+            if size(logData, 1) >= 2
+                genderCode = logData{2, 1};
+                age        = logData{2, 2};
+                if isnumeric(genderCode)
+                    if genderCode == 1
+                        gender = 'female';
+                    else
+                        gender = 'male';
+                    end
+                end
+            end
+        end
+    catch
+        % silent fallback — demographics optional
+    end
+    disp(['  Demographics: ', gender, ', age ', num2str(age)]);
+
+    % --- Export frame-level data (primary output) ---
+    try
+        generateFrameLevelTXT_Auto_Enhanced(data, participant, outputPaths.dataExports, gender, age);
         disp(['Frame-level TXT export complete: ', participant]);
     catch ME
         disp(['Frame-level export error: ', ME.message]);
     end
-
-    % --- Emotion-specific mimicry metrics ---
-    try
-        participantConditionData = calculateEmotionSpecificMimicry( ...
-            participantConditionData, groupData.conditions, mimicryConfig);
-    catch ME
-        disp(['Emotion-specific mimicry error: ', ME.message]);
-    end
-
-    % --- Participant-level condition analysis ---
-    try
-        validateConditionDataSimple(participantConditionData, participant, groupData.conditions);
-    catch ME
-        disp(['Condition validation error: ', ME.message]);
-    end
-
-    try
-        updateConditionDataWithVelocityMetrics(participantConditionData, participant, groupData.conditions);
-    catch ME
-        disp(['Velocity metrics update error: ', ME.message]);
-    end
-
-    % --- Text reports (no MATLAB figures — use R for plotting) ---
-    try
-        analysisDir = fullfile(cfg.baseDir, participant, 'ConditionAnalysis');
-        if ~exist(analysisDir, 'dir'), mkdir(analysisDir); end
-        generateDataInventoryReport(data, participant, analysisDir);
-    catch ME
-        disp(['Report error: ', ME.message]);
-    end
-
-    try
-        createParticipantSummaryReport(participant, outputPaths);
-    catch ME
-        disp(['Participant summary error: ', ME.message]);
-    end
-
-    % Store participant in group structure
-    groupData.participants{end+1}              = participant;
-    groupData.participantData.(participant)    = participantConditionData;
 
     disp(['=== Completed participant: ', participant, ' ===']);
 
 end % end participant loop
 
 disp('=== Analysis complete ===');
-disp('Key output: *_FrameLevel_Enhanced_*.txt in each participant DataExports folder.');
+disp('Key outputs:');
+disp('  *_FrameLevel_Enhanced_*.txt  →  DataExports/ (primary: use in R)');
+disp('  *_FlowMaps.mat               →  TrialAnalysis/ (spatial analysis)');
 
 %% Completion summary
 elapsedTime = toc;
 fprintf('\n=== VTM Toolbox run complete ===\n');
-fprintf('Total time     : %.2f minutes\n', elapsedTime / 60);
-fprintf('Participants   : %d\n', length(participants));
-fprintf('Runs           : %d\n', length(iterRun));
+fprintf('Total time   : %.2f minutes\n', elapsedTime / 60);
+fprintf('Participants : %d\n', length(participants));
+fprintf('Runs         : %d\n', length(iterRun));
