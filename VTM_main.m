@@ -42,6 +42,11 @@
 %
 % Author: Leonardo Ceravolo — initial version June 2025
 % Changelog:
+%   v1.0.6 - Nov 2026: tracker calibration reduced to frame 1 only.
+%            Tracker quality is stable already from frame 2 on. Stable
+%            points are now stored from frame 1, so frame 2 pairs with
+%            frame 1 and gets a real velocity. Frame 1 = reference (0).
+%            Exports tagged '*_fromOne*'.
 %   v1.0.5 - May 2026: removed legacy condition aggregation code,
 %            fixed demographics silent fallback, fixed stimulus 6
 %            shuffled/noize ConditionName parsing
@@ -69,7 +74,7 @@ cfg.mimicryWindowMs  = [50, 900];   % expected mimicry response window
 cfg.baselineWindowMs = [-200, -50]; % pre-stimulus baseline
 
 % Adaptive tracking: fraction of lost points that triggers grid refresh
-cfg.adaptiveTrackingThreshold = 0.3;
+cfg.adaptiveTrackingThreshold = 0.3; % 0.3 as default; higher if noisier data.
 
 % Frequency bands for spectral mimicry analysis [Hz]
 cfg.frequencyBands = [0.5, 2; 2, 8; 8, 15]; % Low / Speech / High
@@ -357,11 +362,12 @@ for i = iterParticipant
                     end
 
                     % Displacement and velocity from stable common points
-                    if size(TheVisiblePoints, 1) >= 15 && FrameCount > 1
+                    if size(TheVisiblePoints, 1) >= 15 %&& FrameCount > 1
                         data.(run).(ConditionName).StableGridPoints{FrameCount}   = TheVisiblePoints;
                         data.(run).(ConditionName).StablePointIndices{FrameCount} = find(isFound);
 
-                        if ~isempty(data.(run).(ConditionName).StableGridPoints{FrameCount-1})
+
+                        if FrameCount > 1 && ~isempty(data.(run).(ConditionName).StableGridPoints{FrameCount-1})
                             prevStablePoints = data.(run).(ConditionName).StableGridPoints{FrameCount-1};
                             currStablePoints = TheVisiblePoints;
                             prevIndices = data.(run).(ConditionName).StablePointIndices{FrameCount-1};
@@ -671,7 +677,7 @@ end % end participant loop
 
 disp('=== Analysis complete ===');
 disp('Key outputs:');
-disp('  *_FrameLevel_Enhanced_*.txt  →  DataExports/ (primary: use in R)');
+disp('  *_FrameLevel_fromOne_Enhanced_*.txt  →  DataExports/ (primary: use in R)');
 disp('  *_FlowMaps.mat               →  TrialAnalysis/ (spatial analysis)');
 
 %% Completion summary

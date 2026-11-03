@@ -63,7 +63,7 @@ function generateFrameLevelTXT_Auto_Enhanced(data, participant, outputDir, gende
     if ~isempty(allFrameData)
         % Create output filename with timestamp
         timestamp = datestr(now, 'yyyymmdd_HHMMSS');
-        filename  = fullfile(outputDir, sprintf('%s_FrameLevel_Enhanced_%s.txt', participant, timestamp));
+        filename  = fullfile(outputDir, sprintf('%s_FrameLevel_fromOne_Enhanced_%s.txt', participant, timestamp));
 
         % Write header and data
         [headers, stringColumns] = getFrameLevelHeaders_Enhanced();
